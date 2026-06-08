@@ -3,23 +3,23 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "<SERVER-NAME>"
+name = "finance-tools"
 dynamic = ["version"]
 description = ""
 readme = "README.md"
 authors = [
-    { name = "", email = "" },
+    { name = "Sinan Ozel", email = "coding@sinan.slmail.me" },
 ]
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
     "fastmcp>=3.2.4",
     "uvicorn>=0.30.0",
+    "scipy>=1.11.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent"
+    "Operating System :: OS Independent",
 ]
 
 [project.optional-dependencies]
