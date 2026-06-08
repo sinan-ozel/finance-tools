@@ -37,10 +37,10 @@ class AnnualizedRateInput(BaseModel):
 def annualized_interest_rate(input: AnnualizedRateInput) -> dict:
     """Solve for the annualized interest rate of a fixed-payment loan.
 
-    Given a principal P repaid in t equal monthly payments of M, returns
-    the implied monthly rate, effective annual rate, and APR — so the cost
-    of the loan can be compared against other instruments like credit cards
-    or mortgages.
+    Given a principal P repaid in t equal monthly payments of M, returns the
+    implied monthly rate, effective annual rate, and APR — so the cost of the
+    loan can be compared against other instruments like credit cards or
+    mortgages.
     """
 
     def f(r: float) -> float:
