@@ -77,6 +77,6 @@ include = ["server*"]
 version = { attr = "server.__version__" }
 
 [project.urls]
-Homepage = "https://github.com/<ORGANIZATION>/<SERVER-NAME>"
-Issues = "https://github.com/<ORGANIZATION>/<SERVER-NAME>/issues"
-Documentation = "https://<ORGANIZATION>.github.io/<SERVER-NAME>/"
+Homepage = "https://github.com/sinanozel/finance-tools"
+Issues = "https://github.com/sinanozel/finance-tools/issues"
+Documentation = "https://sinanozel.github.io/finance-tools/"
