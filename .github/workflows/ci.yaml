@@ -126,7 +126,7 @@ jobs:
       changed: ${{ steps.set_changed.outputs.changed }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -134,7 +134,7 @@ jobs:
         run: |
           git fetch origin main:refs/remotes/origin/main
 
-      - name: Detect changes in server/ or README
+      - name: Detect changes in server/, pyproject.toml, Dockerfile, or README
         id: set_changed
         run: |
           TAG_COUNT=$(git tag | wc -l)
@@ -149,11 +149,11 @@ jobs:
           echo "BASE_COMMIT=$BASE_COMMIT"
           echo "Changed files since $LAST_TAG ($BASE_COMMIT):"
           git diff --name-only $BASE_COMMIT HEAD
-          if git diff --name-only $BASE_COMMIT HEAD | grep -E '^(server/|README)' > /dev/null; then
-            echo "Detected changes in server/ or README"
+          if git diff --name-only $BASE_COMMIT HEAD | grep -E '^(server/|pyproject\.toml|Dockerfile|README)' > /dev/null; then
+            echo "Detected changes in server/, pyproject.toml, Dockerfile, or README"
             echo "changed=true" >> $GITHUB_OUTPUT
           else
-            echo "No changes detected in server/ or README"
+            echo "No changes detected in server/, pyproject.toml, Dockerfile, or README"
             echo "changed=false" >> $GITHUB_OUTPUT
           fi
 
@@ -170,7 +170,7 @@ jobs:
       version: ${{ steps.set-version.outputs.version }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
