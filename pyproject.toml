@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "finance-tools"
 dynamic = ["version"]
-description = ""
+description = "MCP server exposing financial calculation tools"
 readme = "README.md"
 authors = [
     { name = "Sinan Ozel", email = "coding@sinan.slmail.me" },
@@ -77,6 +77,6 @@ include = ["server*"]
 version = { attr = "server.__version__" }
 
 [project.urls]
-Homepage = "https://github.com/sinanozel/finance-tools"
-Issues = "https://github.com/sinanozel/finance-tools/issues"
-Documentation = "https://sinanozel.github.io/finance-tools/"
+Homepage = "https://github.com/sinan-ozel/finance-tools"
+Issues = "https://github.com/sinan-ozel/finance-tools/issues"
+Documentation = "https://sinan-ozel.github.io/finance-tools/"
