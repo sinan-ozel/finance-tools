@@ -124,3 +124,171 @@ async def test_variable_term(mcp_tools):
         "annualized_interest_rate", input={"P": P, "M": M, "t": t}
     )
     assert abs(result["effective_annual_rate"] - R_annual * 100) < 1e-4
+
+
+# --- monthly_payment ---------------------------------------------------------
+
+
+async def test_monthly_payment_matches_closed_form(mcp_tools):
+    """Payment should match the standard amortization formula."""
+    P, annual_rate, t = 250000, 6.0, 360
+    r = annual_rate / 100 / 12
+    expected = P * (r * (1 + r) ** t) / ((1 + r) ** t - 1)
+
+    result = await mcp_tools(
+        "monthly_payment",
+        input={"P": P, "annual_rate": annual_rate, "t": t},
+    )
+    assert abs(result["monthly_payment"] - round(expected, 2)) < 0.01
+
+
+async def test_monthly_payment_zero_interest(mcp_tools):
+    """At 0% the payment is just principal divided by term."""
+    result = await mcp_tools(
+        "monthly_payment", input={"P": 1200, "annual_rate": 0.0, "t": 12}
+    )
+    assert abs(result["monthly_payment"] - 100.0) < 1e-6
+    assert abs(result["total_interest"]) < 1e-6
+
+
+async def test_monthly_payment_inverts_rate_tool(mcp_tools):
+    """monthly_payment and annualized_interest_rate should round-trip."""
+    P, annual_rate, t = 10000, 12.0, 9
+    pay = await mcp_tools(
+        "monthly_payment",
+        input={"P": P, "annual_rate": annual_rate, "t": t},
+    )
+    back = await mcp_tools(
+        "annualized_interest_rate",
+        input={"P": P, "M": pay["monthly_payment"], "t": t},
+    )
+    assert abs(back["APR"] - annual_rate) < 0.05
+
+
+# --- future_value ------------------------------------------------------------
+
+
+async def test_future_value_lump_sum(mcp_tools):
+    """A lump sum compounds without contributions."""
+    result = await mcp_tools(
+        "future_value",
+        input={
+            "present_value": 1000,
+            "annual_rate": 12,
+            "years": 1,
+            "periods_per_year": 12,
+        },
+    )
+    assert abs(result["future_value"] - 1000 * (1.01) ** 12) < 0.01
+
+
+async def test_future_value_zero_rate_contributions(mcp_tools):
+    """At 0% rate, future value is just principal plus contributions."""
+    result = await mcp_tools(
+        "future_value",
+        input={
+            "present_value": 500,
+            "annual_rate": 0,
+            "years": 2,
+            "periods_per_year": 12,
+            "contribution": 100,
+        },
+    )
+    assert abs(result["future_value"] - (500 + 100 * 24)) < 1e-6
+    assert abs(result["interest_earned"]) < 1e-6
+
+
+# --- present_value -----------------------------------------------------------
+
+
+async def test_present_value_inverts_future_value(mcp_tools):
+    """Discounting a compounded lump sum recovers the original principal."""
+    fv = await mcp_tools(
+        "future_value",
+        input={
+            "present_value": 1000,
+            "annual_rate": 7,
+            "years": 10,
+            "periods_per_year": 12,
+        },
+    )
+    pv = await mcp_tools(
+        "present_value",
+        input={
+            "future_value": fv["future_value"],
+            "annual_rate": 7,
+            "years": 10,
+            "periods_per_year": 12,
+        },
+    )
+    assert abs(pv["present_value"] - 1000) < 0.01
+
+
+# --- compound_annual_growth_rate ---------------------------------------------
+
+
+async def test_cagr_doubling(mcp_tools):
+    """Doubling over 1 year is a 100% CAGR."""
+    result = await mcp_tools(
+        "compound_annual_growth_rate",
+        input={"begin_value": 100, "end_value": 200, "years": 1},
+    )
+    assert abs(result["CAGR"] - 100.0) < 1e-4
+    assert abs(result["total_return"] - 100.0) < 1e-4
+
+
+async def test_cagr_known_value(mcp_tools):
+    """100 -> 200 over 10 years is a well-known ~7.18% CAGR."""
+    result = await mcp_tools(
+        "compound_annual_growth_rate",
+        input={"begin_value": 100, "end_value": 200, "years": 10},
+    )
+    assert abs(result["CAGR"] - 7.1773) < 1e-2
+
+
+# --- net_present_value -------------------------------------------------------
+
+
+async def test_npv_zero_rate_is_sum(mcp_tools):
+    """At 0% discount, NPV is just the sum of cash flows."""
+    result = await mcp_tools(
+        "net_present_value",
+        input={"cash_flows": [-100, 50, 50, 50], "annual_rate": 0},
+    )
+    assert abs(result["net_present_value"] - 50) < 1e-6
+
+
+async def test_npv_discounts_future(mcp_tools):
+    """A positive future flow is worth less than face at a positive rate."""
+    result = await mcp_tools(
+        "net_present_value",
+        input={"cash_flows": [0, 110], "annual_rate": 10},
+    )
+    assert abs(result["net_present_value"] - 100) < 1e-6
+
+
+# --- internal_rate_of_return -------------------------------------------------
+
+
+async def test_irr_makes_npv_zero(mcp_tools):
+    """The IRR fed back into NPV should yield approximately zero."""
+    cash_flows = [-1000, 300, 400, 500, 600]
+    irr = await mcp_tools(
+        "internal_rate_of_return", input={"cash_flows": cash_flows}
+    )
+    check = await mcp_tools(
+        "net_present_value",
+        input={
+            "cash_flows": cash_flows,
+            "annual_rate": irr["IRR_per_period"],
+        },
+    )
+    assert abs(check["net_present_value"]) < 1.0
+
+
+async def test_irr_known_value(mcp_tools):
+    """-100 today, 110 next period is exactly a 10% IRR."""
+    result = await mcp_tools(
+        "internal_rate_of_return", input={"cash_flows": [-100, 110]}
+    )
+    assert abs(result["IRR_per_period"] - 10.0) < 1e-4
