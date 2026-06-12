@@ -1,4 +1,5 @@
 import logging
+import math
 
 from fastmcp import FastMCP
 from pydantic import BaseModel, Field
@@ -59,6 +60,306 @@ def annualized_interest_rate(input: AnnualizedRateInput) -> dict:
         "monthly_rate": round(r * 100, 6),
         "effective_annual_rate": round(effective_annual * 100, 4),
         "APR": round(apr * 100, 4),
+    }
+
+
+class MonthlyPaymentInput(BaseModel):
+    """Input for the monthly_payment tool."""
+
+    P: float = Field(
+        description="Principal amount (the original loan balance).",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    annual_rate: float = Field(
+        description=(
+            "Effective annual interest rate in percent, e.g. 12 for 12%."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    t: int = Field(
+        default=9,
+        description="Number of monthly payments.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+
+
+@mcp.tool()
+def monthly_payment(input: MonthlyPaymentInput) -> dict:
+    """Compute the fixed monthly payment for a loan.
+
+    The inverse of annualized_interest_rate: given a principal P, an
+    effective annual rate, and a term of t months, returns the monthly
+    payment plus the total amount paid and total interest over the life of
+    the loan.
+    """
+    r = (1 + input.annual_rate / 100) ** (1 / 12) - 1
+    if abs(r) < 1e-10:
+        M = input.P / input.t
+    else:
+        M = input.P * (r * (1 + r) ** input.t) / ((1 + r) ** input.t - 1)
+    total_paid = M * input.t
+
+    return {
+        "monthly_payment": round(M, 2),
+        "total_paid": round(total_paid, 2),
+        "total_interest": round(total_paid - input.P, 2),
+    }
+
+
+class LoanPayoffInput(BaseModel):
+    """Input for the loan_payoff_months tool."""
+
+    P: float = Field(
+        description="Current loan balance.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    annual_rate: float = Field(
+        description=(
+            "Effective annual interest rate in percent, e.g. 12 for 12%."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    M: float = Field(
+        description="Fixed monthly payment amount.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+
+
+@mcp.tool()
+def loan_payoff_months(input: LoanPayoffInput) -> dict:
+    """Compute how long it takes to pay off a loan at a fixed payment.
+
+    Given a balance P, an effective annual rate, and a monthly payment M,
+    returns the number of months until the balance reaches zero, plus the total
+    paid and total interest. If the payment does not even cover the monthly
+    interest, the loan can never be repaid and an error is returned instead.
+    """
+    r = (1 + input.annual_rate / 100) ** (1 / 12) - 1
+    if abs(r) < 1e-10:
+        n = input.P / input.M
+    else:
+        monthly_interest = r * input.P
+        if input.M <= monthly_interest:
+            return {
+                "error": (
+                    "Payment does not cover monthly interest of "
+                    f"{round(monthly_interest, 2)}; "
+                    "the balance will never decrease."
+                ),
+                "minimum_viable_payment": round(monthly_interest, 2),
+            }
+        n = -math.log(1 - r * input.P / input.M) / math.log(1 + r)
+
+    months = math.ceil(n - 1e-9)
+    total_paid = input.M * n
+
+    return {
+        "months": months,
+        "years": round(months / 12, 2),
+        "total_paid": round(total_paid, 2),
+        "total_interest": round(total_paid - input.P, 2),
+    }
+
+
+class FutureValueInput(BaseModel):
+    """Input for the future_value tool."""
+
+    principal: float = Field(
+        default=0.0,
+        description="Starting amount already invested.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    monthly_contribution: float = Field(
+        default=0.0,
+        description=(
+            "Amount added at the end of each month. May be zero for a "
+            "lump-sum projection."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    annual_rate: float = Field(
+        description=(
+            "Effective annual rate of return in percent, e.g. 7 for 7%."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    months: int = Field(
+        description="Number of months to project.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+
+
+@mcp.tool()
+def future_value(input: FutureValueInput) -> dict:
+    """Project the future value of an investment.
+
+    Grows a starting principal at the given effective annual rate, with an
+    optional fixed contribution at the end of each month. Returns the final
+    value alongside the total contributed and the interest earned, so growth
+    from saving can be separated from growth from returns.
+    """
+    r = (1 + input.annual_rate / 100) ** (1 / 12) - 1
+    n = input.months
+    growth = (1 + r) ** n
+    if abs(r) < 1e-10:
+        fv = input.principal + input.monthly_contribution * n
+    else:
+        fv = input.principal * growth + input.monthly_contribution * (
+            (growth - 1) / r
+        )
+    total_contributed = input.principal + input.monthly_contribution * n
+
+    return {
+        "future_value": round(fv, 2),
+        "total_contributed": round(total_contributed, 2),
+        "interest_earned": round(fv - total_contributed, 2),
+    }
+
+
+class IRRInput(BaseModel):
+    """Input for the internal_rate_of_return tool."""
+
+    cash_flows: list[float] = Field(
+        description=(
+            "Cash flows at regular intervals, starting at period 0. "
+            "Outflows (investments) are negative, inflows are positive, "
+            "e.g. [-1000, 300, 300, 300, 300]."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    periods_per_year: int = Field(
+        default=12,
+        description=(
+            "Number of cash-flow periods per year, used to annualize the "
+            "periodic rate. Use 12 for monthly flows, 1 for annual."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+
+
+@mcp.tool()
+def internal_rate_of_return(input: IRRInput) -> dict:
+    """Compute the internal rate of return of a series of cash flows.
+
+    Finds the periodic discount rate at which the net present value of the cash
+    flows is zero, then annualizes it. The series must contain at least one
+    negative and one positive cash flow.
+    """
+    flows = input.cash_flows
+    if not any(cf < 0 for cf in flows) or not any(cf > 0 for cf in flows):
+        return {
+            "error": (
+                "Cash flows must include at least one outflow (negative) "
+                "and one inflow (positive)."
+            )
+        }
+
+    def npv(r: float) -> float:
+        return sum(cf / (1 + r) ** i for i, cf in enumerate(flows))
+
+    lo, hi = -0.9999, 10.0
+    if npv(lo) * npv(hi) > 0:
+        return {
+            "error": (
+                "No internal rate of return found between -99.99% and "
+                "1000% per period."
+            )
+        }
+
+    r = brentq(npv, lo, hi)
+    annualized = (1 + r) ** input.periods_per_year - 1
+
+    return {
+        "periodic_rate": round(r * 100, 6),
+        "annualized_rate": round(annualized * 100, 4),
+    }
+
+
+class BondYTMInput(BaseModel):
+    """Input for the bond_yield_to_maturity tool."""
+
+    price: float = Field(
+        description="Current market price of the bond.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    face_value: float = Field(
+        default=100.0,
+        description="Face (par) value repaid at maturity.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    coupon_rate: float = Field(
+        description=(
+            "Annual coupon rate in percent of face value, e.g. 5 for 5%. "
+            "Use 0 for a zero-coupon bond."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    years_to_maturity: float = Field(
+        description="Years until the bond matures.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    frequency: int = Field(
+        default=2,
+        description=(
+            "Coupon payments per year: 2 for semiannual (the default for "
+            "most government and corporate bonds), 1 for annual, 4 for "
+            "quarterly, 12 for monthly."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+
+
+@mcp.tool()
+def bond_yield_to_maturity(input: BondYTMInput) -> dict:
+    """Solve for the yield to maturity of a fixed-coupon bond.
+
+    Given the market price, face value, annual coupon rate, years to maturity,
+    and compounding frequency, finds the periodic discount rate at which the
+    present value of all coupons plus the redemption payment equals the price.
+    Returns the nominal YTM (periodic rate times frequency, the market quoting
+    convention), the effective annual yield, and the current yield (annual
+    coupon over price).
+    """
+    if input.price <= 0:
+        return {"error": "Price must be positive."}
+    if input.face_value <= 0:
+        return {"error": "Face value must be positive."}
+
+    n = round(input.years_to_maturity * input.frequency)
+    if n < 1:
+        return {
+            "error": (
+                "The bond must have at least one remaining payment "
+                "period; check years_to_maturity and frequency."
+            )
+        }
+
+    coupon = input.face_value * input.coupon_rate / 100 / input.frequency
+
+    def price_minus_pv(y: float) -> float:
+        pv = sum(coupon / (1 + y) ** i for i in range(1, n + 1))
+        pv += input.face_value / (1 + y) ** n
+        return pv - input.price
+
+    lo, hi = -0.9999, 10.0
+    if price_minus_pv(lo) * price_minus_pv(hi) > 0:
+        return {
+            "error": (
+                "No yield found between -99.99% and 1000% per period; "
+                "check that the price is plausible for these cash flows."
+            )
+        }
+
+    y = brentq(price_minus_pv, lo, hi)
+    nominal = y * input.frequency
+    effective_annual = (1 + y) ** input.frequency - 1
+    annual_coupon = input.face_value * input.coupon_rate / 100
+
+    return {
+        "ytm": round(nominal * 100, 4),
+        "effective_annual_yield": round(effective_annual * 100, 4),
+        "current_yield": round(annual_coupon / input.price * 100, 4),
+        "periodic_rate": round(y * 100, 6),
     }
 
 
