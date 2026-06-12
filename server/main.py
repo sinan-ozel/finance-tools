@@ -275,5 +275,93 @@ def internal_rate_of_return(input: IRRInput) -> dict:
     }
 
 
+class BondYTMInput(BaseModel):
+    """Input for the bond_yield_to_maturity tool."""
+
+    price: float = Field(
+        description="Current market price of the bond.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    face_value: float = Field(
+        default=100.0,
+        description="Face (par) value repaid at maturity.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    coupon_rate: float = Field(
+        description=(
+            "Annual coupon rate in percent of face value, e.g. 5 for 5%. "
+            "Use 0 for a zero-coupon bond."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    years_to_maturity: float = Field(
+        description="Years until the bond matures.",
+        json_schema_extra={"not": {"type": "null"}},
+    )
+    frequency: int = Field(
+        default=2,
+        description=(
+            "Coupon payments per year: 2 for semiannual (the default for "
+            "most government and corporate bonds), 1 for annual, 4 for "
+            "quarterly, 12 for monthly."
+        ),
+        json_schema_extra={"not": {"type": "null"}},
+    )
+
+
+@mcp.tool()
+def bond_yield_to_maturity(input: BondYTMInput) -> dict:
+    """Solve for the yield to maturity of a fixed-coupon bond.
+
+    Given the market price, face value, annual coupon rate, years to maturity,
+    and compounding frequency, finds the periodic discount rate at which the
+    present value of all coupons plus the redemption payment equals the price.
+    Returns the nominal YTM (periodic rate times frequency, the market quoting
+    convention), the effective annual yield, and the current yield (annual
+    coupon over price).
+    """
+    if input.price <= 0:
+        return {"error": "Price must be positive."}
+    if input.face_value <= 0:
+        return {"error": "Face value must be positive."}
+
+    n = round(input.years_to_maturity * input.frequency)
+    if n < 1:
+        return {
+            "error": (
+                "The bond must have at least one remaining payment "
+                "period; check years_to_maturity and frequency."
+            )
+        }
+
+    coupon = input.face_value * input.coupon_rate / 100 / input.frequency
+
+    def price_minus_pv(y: float) -> float:
+        pv = sum(coupon / (1 + y) ** i for i in range(1, n + 1))
+        pv += input.face_value / (1 + y) ** n
+        return pv - input.price
+
+    lo, hi = -0.9999, 10.0
+    if price_minus_pv(lo) * price_minus_pv(hi) > 0:
+        return {
+            "error": (
+                "No yield found between -99.99% and 1000% per period; "
+                "check that the price is plausible for these cash flows."
+            )
+        }
+
+    y = brentq(price_minus_pv, lo, hi)
+    nominal = y * input.frequency
+    effective_annual = (1 + y) ** input.frequency - 1
+    annual_coupon = input.face_value * input.coupon_rate / 100
+
+    return {
+        "ytm": round(nominal * 100, 4),
+        "effective_annual_yield": round(effective_annual * 100, 4),
+        "current_yield": round(annual_coupon / input.price * 100, 4),
+        "periodic_rate": round(y * 100, 6),
+    }
+
+
 if __name__ == "__main__":
     mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)

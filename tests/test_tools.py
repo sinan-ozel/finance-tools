@@ -169,3 +169,127 @@ async def test_irr_requires_mixed_signs(mcp_tools):
         "internal_rate_of_return", input={"cash_flows": [100, 200, 300]}
     )
     assert "error" in result
+
+
+def _bond_price(F: float, c: float, y: float, years: float, freq: int):
+    """Price a bond from a known periodic yield y, coupon rate c (as
+    fractions), and frequency."""
+    n = round(years * freq)
+    coupon = F * c / freq
+    return (
+        sum(coupon / (1 + y) ** i for i in range(1, n + 1)) + F / (1 + y) ** n
+    )
+
+
+async def test_ytm_par_bond(mcp_tools):
+    """A bond priced at par yields exactly its coupon rate."""
+    result = await mcp_tools(
+        "bond_yield_to_maturity",
+        input={
+            "price": 100,
+            "face_value": 100,
+            "coupon_rate": 5,
+            "years_to_maturity": 10,
+            "frequency": 2,
+        },
+    )
+    assert abs(result["ytm"] - 5) < 1e-3
+    assert abs(result["current_yield"] - 5) < 1e-3
+
+
+async def test_ytm_roundtrip(mcp_tools):
+    """Pricing a bond at a known yield and solving back recovers it."""
+    F, c, freq, years = 1000, 0.06, 2, 7
+    y = 0.08 / freq  # 8% nominal annual, semiannual compounding
+    price = _bond_price(F, c, y, years, freq)
+
+    result = await mcp_tools(
+        "bond_yield_to_maturity",
+        input={
+            "price": price,
+            "face_value": F,
+            "coupon_rate": 6,
+            "years_to_maturity": years,
+            "frequency": freq,
+        },
+    )
+    assert abs(result["ytm"] - 8) < 1e-3
+
+
+async def test_ytm_discount_bond(mcp_tools):
+    """Below par, YTM exceeds current yield, which exceeds the coupon."""
+    result = await mcp_tools(
+        "bond_yield_to_maturity",
+        input={
+            "price": 90,
+            "face_value": 100,
+            "coupon_rate": 5,
+            "years_to_maturity": 10,
+            "frequency": 2,
+        },
+    )
+    assert result["ytm"] > result["current_yield"] > 5
+
+
+async def test_ytm_premium_bond(mcp_tools):
+    """Above par, the ordering flips."""
+    result = await mcp_tools(
+        "bond_yield_to_maturity",
+        input={
+            "price": 110,
+            "face_value": 100,
+            "coupon_rate": 5,
+            "years_to_maturity": 10,
+            "frequency": 2,
+        },
+    )
+    assert result["ytm"] < result["current_yield"] < 5
+
+
+async def test_ytm_zero_coupon(mcp_tools):
+    """Zero-coupon bonds follow the closed form (F/P)^(1/n) - 1."""
+    F, price, years, freq = 100, 78.12, 5, 2
+    n = years * freq
+    expected_periodic = (F / price) ** (1 / n) - 1
+
+    result = await mcp_tools(
+        "bond_yield_to_maturity",
+        input={
+            "price": price,
+            "face_value": F,
+            "coupon_rate": 0,
+            "years_to_maturity": years,
+            "frequency": freq,
+        },
+    )
+    assert abs(result["ytm"] - expected_periodic * freq * 100) < 1e-3
+    assert result["current_yield"] == 0
+
+
+async def test_ytm_annual_frequency(mcp_tools):
+    """With annual coupons, nominal and effective yields coincide."""
+    result = await mcp_tools(
+        "bond_yield_to_maturity",
+        input={
+            "price": 95,
+            "face_value": 100,
+            "coupon_rate": 4,
+            "years_to_maturity": 3,
+            "frequency": 1,
+        },
+    )
+    assert abs(result["ytm"] - result["effective_annual_yield"]) < 1e-3
+
+
+async def test_ytm_rejects_nonpositive_price(mcp_tools):
+    """A bond cannot trade at zero or below."""
+    result = await mcp_tools(
+        "bond_yield_to_maturity",
+        input={
+            "price": 0,
+            "face_value": 100,
+            "coupon_rate": 5,
+            "years_to_maturity": 10,
+        },
+    )
+    assert "error" in result
