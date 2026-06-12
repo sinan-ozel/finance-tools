@@ -1,111 +1,47 @@
-![CI/CD](https://github.com/<ORGANIZATION>/<SERVER-NAME>/actions/workflows/ci.yaml/badge.svg?branch=main)
-![Docker Hub](https://img.shields.io/docker/v/<ORGANIZATION>/<SERVER-NAME>?label=Docker%20Hub)
-![License](https://img.shields.io/github/license/<ORGANIZATION>/<SERVER-NAME>.svg)
+![CI/CD](https://github.com/sinan-ozel/finance-tools/actions/workflows/ci.yaml/badge.svg?branch=main)
+![Docker Hub](https://img.shields.io/docker/v/sinan-ozel/finance-tools?label=Docker%20Hub)
+![License](https://img.shields.io/github/license/sinan-ozel/finance-tools.svg)
 
-# MCP Server Template
+# finance-tools
 
-A production-ready template for building [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers in Python. Everything runs through Docker Compose — no local Python installation required beyond Docker itself.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server exposing financial calculation tools — loan rates and payments, investment projections, IRR, and bond yields. Built with [FastMCP](https://github.com/jlowin/fastmcp), runs via Docker, and connects to any MCP client that supports HTTP transport (Claude Desktop, Claude.ai, Cursor, etc.).
 
-## What's Included
-
-- **MCP server skeleton** — `server/main.py` using [FastMCP](https://github.com/jlowin/fastmcp) with **Streamable HTTP + SSE** transport on port 8000
-- **Containerized tooling** — reformat, lint, validate-docs, and test all run via `docker compose`
-- **MCP Inspector** — visual browser UI for testing and debugging your tools
-- **Automated CI/CD** — GitHub Actions that reformat on branches, lint + test on every push, publish to Docker Hub on main
-- **SemVer releases** — stable vs. dev version logic driven by `server/__init__.py`
-- **VS Code tasks** — one-click access to every workflow from the Command Palette
-
----
+Full documentation: <https://sinan-ozel.github.io/finance-tools/>
 
 ## Quickstart
 
-### 1. Create a repo from this template
-
-Click **"Use this template"** on GitHub.
-
-### 2. Replace placeholders
-
-Find and replace these strings across the entire repo:
-
-| Placeholder | Replace with | Used in |
-|---|---|---|
-| `<SERVER-NAME>` | `my-mcp-server` (hyphenated) | Docker image names, GitHub URLs, workflow env |
-| `<SERVER_NAME>` | `my_mcp_server` (underscored) | Not currently used — reserved if you rename `server/` |
-| `<ORGANIZATION>` | Your GitHub username or org | URLs, badges |
-
-Run this to find all occurrences:
 ```bash
-grep -r "<SERVER-NAME>\|<ORGANIZATION>" --include="*.yaml" --include="*.toml" --include="*.md" --include="*.py" .
+docker run -p 8000:8000 sinan-ozel/finance-tools:latest
 ```
 
-### 3. Rename `server/` to your module name (optional but recommended)
-
-```bash
-mv server/ my_mcp_server/
-# Then update every reference to `server/` in:
-#   Dockerfile, reformat/Dockerfile, lint/Dockerfile, docs-validate/Dockerfile,
-#   tests/Dockerfile, tests/docker-compose.yaml, reformat/reformat.sh,
-#   lint/lint.sh, pyproject.toml ([tool.setuptools.packages.find] and
-#   [tool.setuptools.dynamic]), .github/workflows/ci.yaml (Get Current Version step)
-```
-
-### 4. Write your version into `server/__init__.py`
-
-```python
-__version__ = "0.1.0"
-```
-
-### 5. Fill in `pyproject.toml`
-
-- Set `name`, `description`, `authors`
-- Update `[project.urls]`
-
-### 6. Add your MCP tools in `server/main.py`
-
-```python
-from fastmcp import FastMCP
-
-mcp = FastMCP("my-mcp-server")
-
-@mcp.tool()
-def my_tool(param: str) -> str:
-    """Do something useful."""
-    return f"Result: {param}"
-
-if __name__ == "__main__":
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)
-```
-
-### 7. Set up Docker Hub secrets in GitHub
-
-Go to **Settings → Secrets and variables → Actions** and add:
-
-| Secret | Value |
-|---|---|
-| `DOCKERHUB_USERNAME` | Your Docker Hub username |
-| `DOCKERHUB_TOKEN` | A Docker Hub access token (not your password) |
-
-### 8. (Optional) Set up GitHub Pages for docs
-
-Go to **Settings → Pages → Deploy from a branch**: `gh-pages`, `/` (root).
-
----
-
-## MCP Transport
-
-The server uses **Streamable HTTP** transport (the current MCP standard). The endpoint is at:
+The MCP endpoint is at:
 
 ```
 http://localhost:8000/mcp
 ```
 
-Compatible with all MCP clients that support HTTP transport (Claude Desktop, Claude.ai, Cursor, etc.).
+The server uses **Streamable HTTP** transport (the current MCP standard).
+
+---
+
+## Tools
+
+| Tool | What it does |
+|---|---|
+| `annualized_interest_rate` | Solves for the implied rate of a fixed-payment loan; returns monthly rate, effective annual rate, and APR |
+| `monthly_payment` | The inverse: fixed monthly payment for a principal, rate, and term, plus total paid and total interest |
+| `loan_payoff_months` | How long a balance takes to retire at a fixed payment; flags payments that don't cover monthly interest |
+| `future_value` | Projects investment growth from a principal and optional monthly contributions, separating contributions from interest earned |
+| `internal_rate_of_return` | IRR of a cash-flow series (NPV = 0), with the periodic rate annualized at a configurable frequency |
+| `bond_yield_to_maturity` | Solves for YTM and current yield of a fixed-coupon bond; supports any compounding frequency |
+
+All rates are expressed in **percent** (e.g. `12` for 12%). Loan and investment tools use effective annual rates consistently, so outputs from one tool can be fed into another. See the [documentation site](https://sinan-ozel.github.io/finance-tools/) for full input/output schemas and examples.
 
 ---
 
 ## Development
 
-The only requirement is **Docker**.
+The only requirement is **Docker** — every dev operation runs through Docker Compose.
 
 ### Run the tests
 
@@ -179,8 +115,8 @@ push (any branch)
     │
     └── publish (main only, when changed)
         ├── Build & push Docker image to Docker Hub
-        │   ├── stable:  <org>/<server>:1.2.3  +  :latest
-        │   └── dev:     <org>/<server>:1.2.4.dev202401011200
+        │   ├── stable:  sinan-ozel/finance-tools:1.2.3  +  :latest
+        │   └── dev:     sinan-ozel/finance-tools:1.2.4.dev202401011200
         ├── Tag stable release in git
         ├── Create GitHub Release
         └── publish-docs (stable + docs exist)
@@ -206,11 +142,13 @@ Bump `__version__` in `server/__init__.py` to trigger a stable release on the ne
 ├── pyproject.toml               # Project metadata, dependencies, tool config
 ├── server/
 │   ├── __init__.py              # __version__ = "x.y.z"
-│   └── main.py                  # FastMCP server — add your tools here
+│   └── main.py                  # FastMCP server — all tools live here
 ├── tests/
 │   ├── Dockerfile               # Test runner image
 │   ├── docker-compose.yaml      # mcp-server + test-runner services
-│   └── test_unit.py             # Placeholder — add your tests here
+│   ├── test_unit.py             # Tests for annualized_interest_rate
+│   └── test_tools.py            # Tests for the remaining tools
+├── docs/                        # MkDocs documentation site
 ├── reformat/                    # black + docformatter + isort container
 ├── lint/                        # ruff container
 ├── docs-validate/               # mkdocs build container
@@ -219,3 +157,7 @@ Bump `__version__` in `server/__init__.py` to trigger a stable release on the ne
 │   └── semver_compare.py        # Used by CI to compare versions
 └── .github/workflows/ci.yaml    # Full CI/CD pipeline
 ```
+
+## License
+
+[MIT](LICENSE)
