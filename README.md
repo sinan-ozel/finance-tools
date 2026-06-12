@@ -1,6 +1,6 @@
-![CI/CD](https://github.com/<ORGANIZATION>/<SERVER-NAME>/actions/workflows/ci.yaml/badge.svg?branch=main)
-![Docker Hub](https://img.shields.io/docker/v/<ORGANIZATION>/<SERVER-NAME>?label=Docker%20Hub)
-![License](https://img.shields.io/github/license/<ORGANIZATION>/<SERVER-NAME>.svg)
+![CI/CD](https://github.com/sinan-ozel/finance-tools/actions/workflows/ci.yaml/badge.svg?branch=main)
+![Docker Hub](https://img.shields.io/docker/v/sinan-ozel/finance-tools?label=Docker%20Hub)
+![License](https://img.shields.io/github/license/sinan-ozel/finance-tools.svg)
 
 # MCP Server Template
 
